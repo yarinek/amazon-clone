@@ -4,6 +4,7 @@ import { Link, useHistory } from 'react-router-dom';
 import CheckoutProduct from './CheckoutProduct';
 import './Payment.css'
 import { useStateValue } from './StateProvider'
+import { db } from './firebase'
 import CurrencyFormat from 'react-currency-format'
 import { getBasketTotal } from './reducer';
 import axios from './axios'
@@ -26,17 +27,19 @@ function Payment() {
         const getClientSecret = async () => {
             const response = await axios({
                 method: 'post',
-                url: `/payments/create?total=${getBasketTotal(basket)}`
-            })
+                url: `/payments/create?total=${getBasketTotal(basket) * 100}`
+            });
             setclientSecret(response.data.clientSecret)
         }
 
         getClientSecret();
     }, [basket])
 
+    console.log("THE SECRET IS >>>", clientSecret)
+
     const handleSubmit = async (event) => {
         //Stripe stuff
-        event.prevendDefault();
+        event.preventDefault();
         setProcessing(true)
         const payload = await stripe.confirmCardPayment(clientSecret, {
             payment_method: {
@@ -44,9 +47,24 @@ function Payment() {
             }
         }).then(({ paymentIntent }) => {
             //paymentIntent = paymentConfirmation
+            db
+                .collection('users')
+                .doc(user?.uid)
+                .collection('orders')
+                .doc(paymentIntent.id)
+                .set({
+                    basket: basket,
+                    amount: paymentIntent.amount,
+                    created: paymentIntent.created
+                })
+
             setSucceeded(true);
             setError(null)
             setProcessing(false)
+
+            dispatch({
+                type: 'EMPTY_BASKET'
+            })
 
             history.replace('/orders')
         })
